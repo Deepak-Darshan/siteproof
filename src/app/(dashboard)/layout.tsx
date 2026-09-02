@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { BottomNav } from "@/components/BottomNav";
 
 export default async function DashboardLayout({
   children,
@@ -15,5 +16,10 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
-  return <>{children}</>;
+  return (
+    <div className="min-h-screen bg-zinc-50 pb-14">
+      {children}
+      <BottomNav />
+    </div>
+  );
 }
