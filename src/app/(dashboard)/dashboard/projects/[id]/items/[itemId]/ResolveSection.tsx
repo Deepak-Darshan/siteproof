@@ -10,9 +10,10 @@ type Props = {
   itemId: string;
   projectId: string;
   status: PunchItemStatus;
+  isAdmin: boolean;
 };
 
-export function ResolveSection({ itemId, projectId, status }: Props) {
+export function ResolveSection({ itemId, projectId, status, isAdmin }: Props) {
   const router = useRouter();
   const [showCapture, setShowCapture] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,11 +56,53 @@ export function ResolveSection({ itemId, projectId, status }: Props) {
     );
   }
 
+  async function handleReviewDecision(decision: "resolved" | "open") {
+    setError(null);
+    const result = await updateItemStatus(itemId, projectId, decision);
+    if ("error" in result) {
+      setError(result.error);
+      return;
+    }
+    startTransition(() => router.refresh());
+  }
+
   if (status === "in_review") {
+    if (isAdmin) {
+      return (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <ClockIcon />
+            <p className="text-sm font-semibold text-amber-800">After photo submitted — ready for review</p>
+          </div>
+          {error && (
+            <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>
+          )}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() => handleReviewDecision("resolved")}
+              className="flex-1 h-11 rounded-xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-600 focus:ring-offset-2 disabled:opacity-50 transition-colors"
+            >
+              Accept — mark resolved
+            </button>
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() => handleReviewDecision("open")}
+              className="flex-1 h-11 rounded-xl bg-white border border-zinc-300 text-zinc-700 text-sm font-semibold hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-400 focus:ring-offset-2 disabled:opacity-50 transition-colors"
+            >
+              Reject — reopen
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 rounded-xl border border-amber-200">
         <ClockIcon />
-        <span className="text-sm font-medium text-amber-800">Awaiting review</span>
+        <span className="text-sm font-medium text-amber-800">Awaiting GC review</span>
       </div>
     );
   }

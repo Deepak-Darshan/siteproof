@@ -65,6 +65,18 @@ export default async function PunchItemDetailPage({ params }: Props) {
     return data?.signedUrl ?? null;
   }
 
+  // Check if the current user is an admin on this project.
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data: membership } = user
+    ? await supabase
+        .from("project_members")
+        .select("role")
+        .eq("project_id", projectId)
+        .eq("user_id", user.id)
+        .single()
+    : { data: null };
+  const isAdmin = membership?.role === "admin";
+
   const [beforeUrl, afterUrl, blueprintUrl] = await Promise.all([
     beforePhoto ? signedUrl(beforePhoto.file_path) : null,
     afterPhoto  ? signedUrl(afterPhoto.file_path)  : null,
@@ -183,6 +195,7 @@ export default async function PunchItemDetailPage({ params }: Props) {
           itemId={itemId}
           projectId={projectId}
           status={item.status}
+          isAdmin={isAdmin}
         />
       </section>
 

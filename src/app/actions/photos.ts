@@ -99,7 +99,7 @@ export type UpdateItemStatusResult =
 export async function updateItemStatus(
   itemId: string,
   projectId: string,
-  status: "in_review" | "resolved"
+  status: "open" | "in_review" | "resolved"
 ): Promise<UpdateItemStatusResult> {
   const supabase = await createClient();
 
@@ -109,6 +109,9 @@ export async function updateItemStatus(
   const update: Record<string, unknown> = { status };
   if (status === "resolved") {
     update.resolved_at = new Date().toISOString();
+  } else {
+    // Clearing resolved_at when moving back to open or in_review.
+    update.resolved_at = null;
   }
 
   const { error } = await supabase
@@ -118,11 +121,16 @@ export async function updateItemStatus(
 
   if (error) return { error: error.message };
 
+  const action =
+    status === "resolved"  ? "item_resolved"  :
+    status === "open"      ? "item_reopened"   :
+                             "status_changed";
+
   await supabase.from("activity_log").insert({
     project_id: projectId,
     item_id: itemId,
     user_id: user.id,
-    action: status === "resolved" ? "item_resolved" : "status_changed",
+    action,
     metadata: { new_status: status },
   });
 
