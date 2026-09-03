@@ -82,5 +82,15 @@ export async function createPunchItem(
 
   if (error) return { message: error.message };
 
-  return { success: true, item: data as PunchItem };
+  const item = data as PunchItem;
+
+  await supabase.from("activity_log").insert({
+    project_id: item.project_id,
+    item_id: item.id,
+    user_id: user.id,
+    action: "item_created",
+    metadata: { title: item.title, severity: item.severity, trade: item.trade },
+  });
+
+  return { success: true, item };
 }

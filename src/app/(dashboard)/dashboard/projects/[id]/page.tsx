@@ -50,6 +50,24 @@ export default async function ProjectPage({ params }: Props) {
         </div>
       </div>
 
+      {/* Punch list link */}
+      <Link
+        href={`/dashboard/projects/${id}/items`}
+        className="flex items-center justify-between bg-white rounded-xl border border-zinc-200 px-4 py-3.5 hover:border-zinc-300 hover:shadow-sm transition-all active:bg-zinc-50 mb-6"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-400 shrink-0">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+            </svg>
+          </div>
+          <p className="font-medium text-zinc-900 text-sm">Punch List</p>
+        </div>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-300 shrink-0" aria-hidden="true">
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      </Link>
+
       {/* Blueprints section */}
       <section>
         <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-wide mb-3">

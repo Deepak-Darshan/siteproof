@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import type { PunchItem, Blueprint, Photo } from "@/types/database";
 import { ResolveSection } from "./ResolveSection";
+import { BeforePhotoSection } from "./BeforePhotoSection";
 
 type Props = {
   params: Promise<{ id: string; itemId: string }>;
@@ -177,7 +178,7 @@ export default async function PunchItemDetailPage({ params }: Props) {
         {beforeUrl ? (
           <PhotoCard url={beforeUrl} label="Before" date={beforePhoto!.taken_at} lat={beforePhoto!.lat} lng={beforePhoto!.lng} />
         ) : (
-          <EmptyPhotoSlot label="No before photo yet" />
+          <BeforePhotoSection itemId={itemId} projectId={projectId} />
         )}
       </section>
 
@@ -242,18 +243,6 @@ function PhotoCard({
           </p>
         )}
       </div>
-    </div>
-  );
-}
-
-function EmptyPhotoSlot({ label }: { label: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-zinc-200 py-10 text-zinc-400">
-      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-        <circle cx="12" cy="13" r="4" />
-      </svg>
-      <p className="text-sm">{label}</p>
     </div>
   );
 }

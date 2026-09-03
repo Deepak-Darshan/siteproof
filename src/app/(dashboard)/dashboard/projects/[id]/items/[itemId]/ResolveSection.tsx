@@ -2,8 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import { PhotoCapture, type CapturedPhoto } from "@/components/PhotoCapture";
-import { uploadPhoto, updateItemStatus } from "@/app/actions/photos";
+import { savePhoto, updateItemStatus } from "@/app/actions/photos";
 import type { PunchItemStatus } from "@/types/database";
 
 type Props = {
@@ -21,22 +22,34 @@ export function ResolveSection({ itemId, projectId, status, isAdmin }: Props) {
 
   async function handleCapture(photo: CapturedPhoto) {
     setError(null);
-    const formData = new FormData();
-    formData.set("file", new File([photo.blob], "photo.jpg", { type: "image/jpeg" }));
-    formData.set("item_id", itemId);
-    formData.set("project_id", projectId);
-    formData.set("type", "after");
-    formData.set("taken_at", photo.takenAt.toISOString());
-    if (photo.lat != null) formData.set("lat", String(photo.lat));
-    if (photo.lng != null) formData.set("lng", String(photo.lng));
 
-    const result = await uploadPhoto(formData);
-    if ("error" in result) {
-      setError(result.error);
+    // Step 1: upload directly to Supabase Storage from the browser.
+    const supabase = createClient();
+    const filePath = `${projectId}/${itemId}/after_${Date.now()}.jpg`;
+
+    const { error: storageError } = await supabase.storage
+      .from("photos")
+      .upload(filePath, new File([photo.blob], "photo.jpg", { type: "image/jpeg" }), {
+        contentType: "image/jpeg",
+        upsert: false,
+      });
+
+    if (storageError) {
+      setError(`Upload failed: ${storageError.message}`);
       return;
     }
 
-    // Move status to in_review (subcontractor uploaded proof).
+    // Step 2: save photo metadata row.
+    const photoResult = await savePhoto(
+      itemId, projectId, "after", filePath,
+      photo.takenAt.toISOString(), photo.lat, photo.lng,
+    );
+    if ("error" in photoResult) {
+      setError(photoResult.error);
+      return;
+    }
+
+    // Step 3: move item to in_review.
     const statusResult = await updateItemStatus(itemId, projectId, "in_review");
     if ("error" in statusResult) {
       setError(statusResult.error);
@@ -47,15 +60,6 @@ export function ResolveSection({ itemId, projectId, status, isAdmin }: Props) {
     startTransition(() => router.refresh());
   }
 
-  if (status === "resolved") {
-    return (
-      <div className="flex items-center gap-2 px-4 py-3 bg-green-50 rounded-xl border border-green-200">
-        <CheckIcon />
-        <span className="text-sm font-medium text-green-800">Item resolved</span>
-      </div>
-    );
-  }
-
   async function handleReviewDecision(decision: "resolved" | "open") {
     setError(null);
     const result = await updateItemStatus(itemId, projectId, decision);
@@ -64,6 +68,15 @@ export function ResolveSection({ itemId, projectId, status, isAdmin }: Props) {
       return;
     }
     startTransition(() => router.refresh());
+  }
+
+  if (status === "resolved") {
+    return (
+      <div className="flex items-center gap-2 px-4 py-3 bg-green-50 rounded-xl border border-green-200">
+        <CheckIcon />
+        <span className="text-sm font-medium text-green-800">Item resolved</span>
+      </div>
+    );
   }
 
   if (status === "in_review") {
