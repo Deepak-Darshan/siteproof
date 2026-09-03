@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import type { PunchItem } from "@/types/database";
 import { CreatePunchItemModal } from "./CreatePunchItemModal";
 
@@ -75,6 +76,7 @@ export function BlueprintViewer({
   imageUrl,
   initialItems,
 }: Props) {
+  const router = useRouter();
   const outerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const imgRef  = useRef<HTMLImageElement>(null);
@@ -176,8 +178,11 @@ export function BlueprintViewer({
   }
 
   function handleTap(cx: number, cy: number) {
-    // Tapping an existing pin — future: open detail view.
-    if (pinAtScreen(cx, cy)) return;
+    const existing = pinAtScreen(cx, cy);
+    if (existing) {
+      router.push(`/dashboard/projects/${projectId}/items/${existing.id}`);
+      return;
+    }
 
     const norm = screenToNorm(cx, cy);
     if (!norm) return;

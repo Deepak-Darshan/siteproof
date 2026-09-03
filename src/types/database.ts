@@ -60,3 +60,34 @@ export type PunchItem = {
   created_at: string;
   resolved_at: string | null;
 };
+
+export type PhotoType = "before" | "after";
+
+export type Photo = {
+  id: string;
+  item_id: string;
+  type: PhotoType;
+  file_path: string;
+  taken_at: string;
+  lat: number | null;
+  lng: number | null;
+  uploaded_by: string;
+  created_at: string;
+};
+
+export type ActivityAction =
+  | "item_created"
+  | "photo_added"
+  | "status_changed"
+  | "item_resolved"
+  | "item_reopened";
+
+export type ActivityLog = {
+  id: string;
+  project_id: string;
+  item_id: string | null;
+  user_id: string;
+  action: ActivityAction;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+};
