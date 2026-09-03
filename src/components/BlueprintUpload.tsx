@@ -2,7 +2,8 @@
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { uploadBlueprint } from "@/app/actions/blueprints";
+import { createClient } from "@/lib/supabase/client";
+import { saveBlueprint } from "@/app/actions/blueprints";
 
 type Props = {
   projectId: string;
@@ -76,17 +77,35 @@ export default function BlueprintUpload({ projectId }: Props) {
     setUploading(true);
     setError(null);
 
-    const formData = new FormData();
-    formData.set("file", file);
-    formData.set("project_id", projectId);
-    formData.set("label", label.trim() || "Untitled");
-    formData.set("width", String(dimensions.width));
-    formData.set("height", String(dimensions.height));
-
     try {
-      const result = await uploadBlueprint(formData);
+      // Step 1: upload the file directly to Supabase Storage from the browser.
+      // This avoids routing a large binary through a Next.js server action.
+      const supabase = createClient();
+      const timestamp = Date.now();
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const filePath = `${projectId}/${timestamp}_${safeName}`;
+
+      const { error: storageError } = await supabase.storage
+        .from("blueprints")
+        .upload(filePath, file, { contentType: file.type || "image/png", upsert: false });
+
+      if (storageError) {
+        setError(`Storage upload failed: ${storageError.message}`);
+        setUploading(false);
+        return;
+      }
+
+      // Step 2: save the metadata row via a lightweight server action (no file).
+      const result = await saveBlueprint(
+        projectId,
+        label.trim() || "Untitled",
+        filePath,
+        dimensions.width,
+        dimensions.height,
+      );
 
       if ("error" in result) {
+        // Server action already cleaned up the orphaned storage object.
         setError(result.error);
         setUploading(false);
         return;
