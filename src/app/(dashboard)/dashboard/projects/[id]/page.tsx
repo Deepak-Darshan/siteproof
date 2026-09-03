@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import BlueprintUpload from "@/components/BlueprintUpload";
 import type { Blueprint, Project } from "@/types/database";
 
 type Props = {
@@ -94,6 +95,11 @@ export default async function ProjectPage({ params }: Props) {
             ))}
           </ul>
         )}
+
+        {/* Upload button */}
+        <div className="mt-4">
+          <BlueprintUpload projectId={id} />
+        </div>
       </section>
     </main>
   );
