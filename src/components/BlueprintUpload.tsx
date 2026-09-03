@@ -83,16 +83,21 @@ export default function BlueprintUpload({ projectId }: Props) {
     formData.set("width", String(dimensions.width));
     formData.set("height", String(dimensions.height));
 
-    const result = await uploadBlueprint(formData);
+    try {
+      const result = await uploadBlueprint(formData);
 
-    if ("error" in result) {
-      setError(result.error);
+      if ("error" in result) {
+        setError(result.error);
+        setUploading(false);
+        return;
+      }
+
+      reset();
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed. Please try again.");
       setUploading(false);
-      return;
     }
-
-    reset();
-    router.refresh();
   }
 
   if (!isOpen) {
