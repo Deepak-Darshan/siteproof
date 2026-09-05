@@ -83,13 +83,16 @@ export function PhotoCapture({ onCapture, onCancel }: Props) {
         audio: false,
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
+      // Set mode first so the <video> element renders, then the effect below
+      // attaches the stream once the element is in the DOM.
       setMode("camera");
-    } catch {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      const denied = msg.includes("Permission") || msg.includes("denied") || msg.includes("NotAllowed");
       setCameraError(
-        "Camera access was denied. Use the gallery button to upload a photo instead."
+        denied
+          ? "Camera permission denied. Use the gallery button to upload a photo instead."
+          : "Could not access camera. Use the gallery button to upload a photo instead."
       );
     }
   }, []);
@@ -98,6 +101,20 @@ export function PhotoCapture({ onCapture, onCancel }: Props) {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
   }, []);
+
+  // After mode switches to "camera", the <video> element has mounted —
+  // assign the stream and explicitly call play() (required on mobile Safari).
+  useEffect(() => {
+    if (mode !== "camera") return;
+    const video = videoRef.current;
+    const stream = streamRef.current;
+    if (!video || !stream) return;
+    video.srcObject = stream;
+    video.play().catch(() => {
+      // Autoplay was blocked — the video will still show once the user
+      // interacts, and playsInline + muted satisfy most browser policies.
+    });
+  }, [mode]);
 
   // Stop the stream whenever we leave camera mode or unmount.
   useEffect(() => {
@@ -108,7 +125,7 @@ export function PhotoCapture({ onCapture, onCancel }: Props) {
 
   function captureFrame() {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || video.videoWidth === 0 || video.readyState < 2) return;
 
     const canvas = document.createElement("canvas");
     canvas.width = video.videoWidth;
