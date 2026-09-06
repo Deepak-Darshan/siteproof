@@ -2,10 +2,16 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import BlueprintUpload from "@/components/BlueprintUpload";
-import type { Blueprint, Project } from "@/types/database";
+import { ReportButton } from "@/components/ReportButton";
+import { TeamSection } from "@/components/TeamSection";
+import type { Blueprint, Profile, Project, ProjectMember } from "@/types/database";
 
 type Props = {
   params: Promise<{ id: string }>;
+};
+
+type MemberWithProfile = ProjectMember & {
+  profiles: Pick<Profile, "full_name" | "company">;
 };
 
 export default async function ProjectPage({ params }: Props) {
@@ -20,40 +26,57 @@ export default async function ProjectPage({ params }: Props) {
 
   if (error || !project) notFound();
 
-  const { data: blueprints } = await supabase
-    .from("blueprints")
-    .select("*")
-    .eq("project_id", id)
-    .order("created_at", { ascending: true });
+  const [{ data: blueprints }, { data: { user } }, { data: membersData }] =
+    await Promise.all([
+      supabase
+        .from("blueprints")
+        .select("*")
+        .eq("project_id", id)
+        .order("created_at", { ascending: true }),
+      supabase.auth.getUser(),
+      supabase
+        .from("project_members")
+        .select("project_id, user_id, role, invited_at, profiles(full_name, company)")
+        .eq("project_id", id)
+        .order("invited_at", { ascending: true }),
+    ]);
 
   const p = project as Project;
   const sheets = (blueprints as Blueprint[]) ?? [];
+  const members = (membersData as unknown as MemberWithProfile[]) ?? [];
+
+  const currentMember = user
+    ? members.find((m) => m.user_id === user.id)
+    : undefined;
+  const isAdmin = currentMember?.role === "admin";
 
   return (
-    <main className="max-w-2xl mx-auto px-4 pt-6 pb-4">
+    <main className="max-w-2xl mx-auto px-4 pt-6 pb-4 space-y-8">
       {/* Back + header */}
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3">
         <Link
           href="/dashboard"
-          className="flex items-center justify-center w-9 h-9 rounded-lg hover:bg-zinc-100 transition-colors text-zinc-600"
+          className="flex items-center justify-center w-9 h-9 rounded-lg hover:bg-zinc-100 transition-colors text-zinc-600 shrink-0"
           aria-label="Back to projects"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </Link>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="font-bold text-zinc-900 text-xl truncate">{p.name}</h1>
           {p.address && (
             <p className="text-sm text-zinc-500 truncate">{p.address}</p>
           )}
         </div>
+        {/* Report download */}
+        <ReportButton projectId={id} />
       </div>
 
       {/* Punch list link */}
       <Link
         href={`/dashboard/projects/${id}/items`}
-        className="flex items-center justify-between bg-white rounded-xl border border-zinc-200 px-4 py-3.5 hover:border-zinc-300 hover:shadow-sm transition-all active:bg-zinc-50 mb-6"
+        className="flex items-center justify-between bg-white rounded-xl border border-zinc-200 px-4 py-3.5 hover:border-zinc-300 hover:shadow-sm transition-all active:bg-zinc-50"
       >
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-400 shrink-0">
@@ -67,6 +90,9 @@ export default async function ProjectPage({ params }: Props) {
           <polyline points="9 18 15 12 9 6" />
         </svg>
       </Link>
+
+      {/* Team section */}
+      <TeamSection projectId={id} members={members} isAdmin={isAdmin} />
 
       {/* Blueprints section */}
       <section>

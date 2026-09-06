@@ -1,11 +1,14 @@
 "use client";
 
-import { useActionState } from "react";
+import { Suspense, useActionState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { login } from "@/app/actions/auth";
 
-export default function LoginPage() {
+function LoginForm() {
   const [state, action, pending] = useActionState(login, undefined);
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get("redirect") ?? "";
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-zinc-200 p-8">
@@ -17,6 +20,9 @@ export default function LoginPage() {
       </div>
 
       <form action={action} className="space-y-5">
+        {redirectTo && (
+          <input type="hidden" name="redirectTo" value={redirectTo} />
+        )}
         <div>
           <label
             htmlFor="email"
@@ -88,5 +94,13 @@ export default function LoginPage() {
         </Link>
       </p>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }

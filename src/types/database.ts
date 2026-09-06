@@ -91,3 +91,15 @@ export type ActivityLog = {
   metadata: Record<string, unknown> | null;
   created_at: string;
 };
+
+export type ProjectInvite = {
+  id: string;
+  project_id: string;
+  invited_by: string;
+  email: string;
+  role: "admin" | "member";
+  token: string;
+  accepted_at: string | null;
+  expires_at: string;
+  created_at: string;
+};

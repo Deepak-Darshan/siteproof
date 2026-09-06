@@ -51,16 +51,11 @@ RLS is enabled on all tables — never bypass it from client code.
 - Minimum touch target: 44px for all interactive elements
 - Image compression before upload: canvas resize to max 1920px wide
 
-## Current Sprint
-
-**Week 3 — Photo Capture & Item Flow**
-- [ ] PhotoCapture component (MediaDevices.getUserMedia)
-- [ ] EXIF extraction (timestamp, GPS) with exifr
-- [ ] Photo upload to Supabase Storage + photos table
-- [ ] Punch item detail page (description, severity, trade, before photo)
-- [ ] Resolve flow (sub uploads after photo, status → in_review)
-- [ ] Punch list view with filters (by status, severity, trade)
-- [ ] Activity log inserts for audit trail
+## Current Sprint: Week 4
+- PDF punch list report (client-side with @react-pdf/renderer)
+- Team invites (project_invites table, invite modal, /invite/[token] accept flow)
+- No email sending — invite link copy only
+- All new SQL migrations should be printed, not run via CLI
 
 ## Commands
 
