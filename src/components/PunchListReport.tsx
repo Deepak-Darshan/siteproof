@@ -2,6 +2,15 @@
  * @react-pdf/renderer document — renders entirely client-side.
  * This file must NOT be imported at the module level from any server component.
  * Use dynamic import inside ReportButton instead.
+ *
+ * IMPORTANT: Do NOT use Font.register with WOFF2 sources — fontkit (used
+ * internally by react-pdf) does not reliably parse WOFF2 and throws
+ * "Offset is outside the bounds of the DataView". Use built-in fonts only.
+ *
+ * IMPORTANT: Never pass external https:// URLs to <Image src>. All photo
+ * sources must be pre-fetched as base64 data URIs by ReportButton before
+ * calling pdf(). This component only renders <Image> when src starts with
+ * "data:" — anything else is shown as a text placeholder.
  */
 import {
   Document,
@@ -10,27 +19,14 @@ import {
   View,
   Image,
   StyleSheet,
-  Font,
 } from "@react-pdf/renderer";
 import type { ReportData } from "@/app/api/report/[id]/route";
 
-Font.register({
-  family: "Inter",
-  fonts: [
-    {
-      src: "https://fonts.gstatic.com/s/inter/v13/UcC73FwrK3iLTeHuS_fvQtMwCp50KnMa1ZL7.woff2",
-      fontWeight: 400,
-    },
-    {
-      src: "https://fonts.gstatic.com/s/inter/v13/UcC73FwrK3iLTeHuS_fvQtMwCp50KnMa25L7SUc.woff2",
-      fontWeight: 700,
-    },
-  ],
-});
+// ── Design tokens ──────────────────────────────────────────────────────────────
 
-const BRAND = "#18181b"; // zinc-900
-const MUTED  = "#71717a"; // zinc-500
-const LINE   = "#e4e4e7"; // zinc-200
+const BRAND = "#18181b";
+const MUTED  = "#71717a";
+const LINE   = "#e4e4e7";
 
 const SEV_COLORS: Record<string, string> = {
   critical: "#ef4444",
@@ -67,80 +63,84 @@ const TRADE_LABELS: Record<string, string> = {
   other:      "Other",
 };
 
+// ── Styles ─────────────────────────────────────────────────────────────────────
+
 const s = StyleSheet.create({
   page: {
-    fontFamily: "Inter",
+    // Helvetica is a built-in PDF font — no external fetch required.
+    fontFamily: "Helvetica",
     fontSize: 9,
     color: BRAND,
     paddingTop: 48,
-    paddingBottom: 48,
+    paddingBottom: 56,
     paddingHorizontal: 48,
     backgroundColor: "#ffffff",
   },
 
-  // Header
-  header: { marginBottom: 24 },
-  headerTitle: { fontSize: 20, fontWeight: 700, marginBottom: 4 },
+  header: { marginBottom: 20 },
+  headerTitle: { fontSize: 18, fontFamily: "Helvetica-Bold", marginBottom: 4 },
   headerMeta: { fontSize: 9, color: MUTED },
 
-  divider: { borderBottom: `1 solid ${LINE}`, marginVertical: 16 },
+  divider: { borderBottom: `1 solid ${LINE}`, marginVertical: 14 },
 
-  // Summary row
-  summaryRow: { flexDirection: "row", gap: 12, marginBottom: 24 },
+  summaryRow: { flexDirection: "row", gap: 10, marginBottom: 20 },
   summaryCard: {
     flex: 1,
-    borderRadius: 6,
+    borderRadius: 5,
     padding: 10,
     backgroundColor: "#f4f4f5",
   },
-  summaryNum: { fontSize: 18, fontWeight: 700, marginBottom: 2 },
+  summaryNum: { fontSize: 16, fontFamily: "Helvetica-Bold", marginBottom: 2 },
   summaryLabel: { fontSize: 8, color: MUTED },
 
-  // Item card
   card: {
-    marginBottom: 16,
-    borderRadius: 8,
+    marginBottom: 14,
+    borderRadius: 6,
     border: `1 solid ${LINE}`,
-    overflow: "hidden",
   },
   cardHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    padding: 10,
+    padding: 8,
     backgroundColor: "#fafafa",
     borderBottom: `1 solid ${LINE}`,
+    borderTopLeftRadius: 6,
+    borderTopRightRadius: 6,
   },
-  cardTitle: { fontSize: 10, fontWeight: 700, flex: 1, marginRight: 8 },
+  cardTitle: { fontSize: 9, fontFamily: "Helvetica-Bold", flex: 1, marginRight: 6 },
   badge: {
     borderRadius: 20,
-    paddingHorizontal: 6,
+    paddingHorizontal: 5,
     paddingVertical: 2,
     fontSize: 7,
-    fontWeight: 700,
+    fontFamily: "Helvetica-Bold",
     color: "#ffffff",
   },
-  cardBody: { padding: 10 },
-  metaRow: { flexDirection: "row", gap: 12, marginBottom: 6 },
-  metaLabel: { color: MUTED, marginRight: 3 },
+  cardBody: { padding: 8 },
+  metaRow: { flexDirection: "row", gap: 10, marginBottom: 5, flexWrap: "wrap" },
+  metaLabel: { color: MUTED },
 
-  description: { color: "#3f3f46", marginBottom: 8, lineHeight: 1.5 },
+  description: { color: "#3f3f46", marginBottom: 6, lineHeight: 1.4 },
 
-  // Photos
-  photoRow: { flexDirection: "row", gap: 8, marginTop: 8 },
+  photoRow: { flexDirection: "row", gap: 8, marginTop: 6 },
   photoBox: { flex: 1 },
-  photoLabel: { fontSize: 7, color: MUTED, marginBottom: 3, fontWeight: 700 },
-  photoImg: { width: "100%", borderRadius: 4, objectFit: "cover" },
+  photoLabel: { fontSize: 7, color: MUTED, marginBottom: 3, fontFamily: "Helvetica-Bold" },
+  photoImg: { width: "100%", borderRadius: 3 },
   noPhoto: {
-    height: 70,
+    height: 64,
     backgroundColor: "#f4f4f5",
-    borderRadius: 4,
+    borderRadius: 3,
     alignItems: "center",
     justifyContent: "center",
   },
   noPhotoText: { fontSize: 7, color: MUTED },
 
-  // Footer
+  emptyState: {
+    padding: 20,
+    alignItems: "center",
+  },
+  emptyText: { fontSize: 10, color: MUTED },
+
   footer: {
     position: "absolute",
     bottom: 24,
@@ -151,6 +151,8 @@ const s = StyleSheet.create({
   },
   footerText: { fontSize: 7, color: MUTED },
 });
+
+// ── Sub-components ─────────────────────────────────────────────────────────────
 
 function Badge({ text, color }: { text: string; color: string }) {
   return (
@@ -169,10 +171,35 @@ function SummaryCard({ num, label }: { num: number; label: string }) {
   );
 }
 
+/**
+ * Safely render a photo. Only uses <Image> when src is a data URI (pre-fetched
+ * by ReportButton). External URLs and null both render a placeholder instead.
+ */
+function PhotoSlot({ src, label }: { src: string | null; label: string }) {
+  const isDataUri = typeof src === "string" && src.startsWith("data:");
+  return (
+    <View style={s.photoBox}>
+      <Text style={s.photoLabel}>{label}</Text>
+      {isDataUri ? (
+        <Image src={src} style={s.photoImg} />
+      ) : (
+        <View style={s.noPhoto}>
+          <Text style={s.noPhotoText}>
+            {src ? "Photo unavailable" : "No photo"}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ── Document ───────────────────────────────────────────────────────────────────
+
 export function PunchListReport({ data }: { data: ReportData }) {
   const total    = data.items.length;
-  const resolved = data.items.filter((i) => i.status === "resolved").length;
   const open     = data.items.filter((i) => i.status === "open").length;
+  const inReview = data.items.filter((i) => i.status === "in_review").length;
+  const resolved = data.items.filter((i) => i.status === "resolved").length;
   const critical = data.items.filter((i) => i.severity === "critical").length;
 
   const generated = new Date(data.generatedAt).toLocaleString("en-AU", {
@@ -186,9 +213,9 @@ export function PunchListReport({ data }: { data: ReportData }) {
         {/* Header */}
         <View style={s.header}>
           <Text style={s.headerTitle}>{data.project.name}</Text>
-          {data.project.address && (
+          {data.project.address ? (
             <Text style={s.headerMeta}>{data.project.address}</Text>
-          )}
+          ) : null}
           <Text style={[s.headerMeta, { marginTop: 2 }]}>
             Punch List Report — Generated {generated}
           </Text>
@@ -196,85 +223,77 @@ export function PunchListReport({ data }: { data: ReportData }) {
 
         <View style={s.divider} />
 
-        {/* Summary */}
+        {/* Summary stats */}
         <View style={s.summaryRow}>
           <SummaryCard num={total}    label="Total items" />
           <SummaryCard num={open}     label="Open" />
+          <SummaryCard num={inReview} label="In Review" />
           <SummaryCard num={resolved} label="Resolved" />
           <SummaryCard num={critical} label="Critical" />
         </View>
 
-        {/* Items */}
-        {data.items.map((item) => (
-          <View key={item.id} style={s.card}>
-            <View style={s.cardHeader}>
-              <Text style={s.cardTitle}>{item.title}</Text>
-              <Badge
-                text={SEV_LABELS[item.severity] ?? item.severity}
-                color={SEV_COLORS[item.severity] ?? "#71717a"}
-              />
-              <View style={{ width: 6 }} />
-              <Badge
-                text={STATUS_LABELS[item.status] ?? item.status}
-                color={STATUS_COLORS[item.status] ?? "#71717a"}
-              />
-            </View>
-            <View style={s.cardBody}>
-              {/* Meta */}
-              <View style={s.metaRow}>
-                <Text>
-                  <Text style={s.metaLabel}>Trade: </Text>
-                  {TRADE_LABELS[item.trade] ?? item.trade}
-                </Text>
-                {item.blueprintLabel && (
-                  <Text>
-                    <Text style={s.metaLabel}>Sheet: </Text>
-                    {item.blueprintLabel}
-                  </Text>
-                )}
-                {item.resolved_at && (
-                  <Text>
-                    <Text style={s.metaLabel}>Resolved: </Text>
-                    {new Date(item.resolved_at).toLocaleDateString("en-AU")}
-                  </Text>
-                )}
-              </View>
-
-              {/* Description */}
-              {item.description && (
-                <Text style={s.description}>{item.description}</Text>
-              )}
-
-              {/* Photos */}
-              {(item.beforePhotoUrl || item.afterPhotoUrl) && (
-                <View style={s.photoRow}>
-                  <View style={s.photoBox}>
-                    <Text style={s.photoLabel}>BEFORE</Text>
-                    {item.beforePhotoUrl ? (
-                      <Image src={item.beforePhotoUrl} style={s.photoImg} />
-                    ) : (
-                      <View style={s.noPhoto}>
-                        <Text style={s.noPhotoText}>No photo</Text>
-                      </View>
-                    )}
-                  </View>
-                  <View style={s.photoBox}>
-                    <Text style={s.photoLabel}>AFTER</Text>
-                    {item.afterPhotoUrl ? (
-                      <Image src={item.afterPhotoUrl} style={s.photoImg} />
-                    ) : (
-                      <View style={s.noPhoto}>
-                        <Text style={s.noPhotoText}>No photo</Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-              )}
-            </View>
+        {/* Item list */}
+        {data.items.length === 0 ? (
+          <View style={s.emptyState}>
+            <Text style={s.emptyText}>No punch items in this project yet.</Text>
           </View>
-        ))}
+        ) : (
+          data.items.map((item) => {
+            const hasPhotos = item.beforePhotoUrl !== null || item.afterPhotoUrl !== null;
+            return (
+              <View key={item.id} style={s.card}>
+                <View style={s.cardHeader}>
+                  <Text style={s.cardTitle}>{item.title}</Text>
+                  <Badge
+                    text={SEV_LABELS[item.severity] ?? item.severity}
+                    color={SEV_COLORS[item.severity] ?? "#71717a"}
+                  />
+                  <View style={{ width: 5 }} />
+                  <Badge
+                    text={STATUS_LABELS[item.status] ?? item.status}
+                    color={STATUS_COLORS[item.status] ?? "#71717a"}
+                  />
+                </View>
+                <View style={s.cardBody}>
+                  {/* Meta row */}
+                  <View style={s.metaRow}>
+                    <Text>
+                      <Text style={s.metaLabel}>Trade: </Text>
+                      {TRADE_LABELS[item.trade] ?? item.trade}
+                    </Text>
+                    {item.blueprintLabel ? (
+                      <Text>
+                        <Text style={s.metaLabel}>Sheet: </Text>
+                        {item.blueprintLabel}
+                      </Text>
+                    ) : null}
+                    {item.resolved_at ? (
+                      <Text>
+                        <Text style={s.metaLabel}>Resolved: </Text>
+                        {new Date(item.resolved_at).toLocaleDateString("en-AU")}
+                      </Text>
+                    ) : null}
+                  </View>
 
-        {/* Footer */}
+                  {/* Description */}
+                  {item.description ? (
+                    <Text style={s.description}>{item.description}</Text>
+                  ) : null}
+
+                  {/* Photos — only shown when at least one slot is non-null */}
+                  {hasPhotos ? (
+                    <View style={s.photoRow}>
+                      <PhotoSlot src={item.beforePhotoUrl} label="BEFORE" />
+                      <PhotoSlot src={item.afterPhotoUrl}  label="AFTER" />
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+            );
+          })
+        )}
+
+        {/* Footer — repeats on every page */}
         <View style={s.footer} fixed>
           <Text style={s.footerText}>SiteProof — Confidential</Text>
           <Text

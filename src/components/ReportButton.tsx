@@ -5,6 +5,45 @@ import type { ReportData } from "@/app/api/report/[id]/route";
 
 type Props = { projectId: string };
 
+/**
+ * Fetch an image URL and return it as a base64 data URI.
+ * Returns null on any failure so the PDF can show a placeholder instead.
+ * This runs in the browser (no CORS issues with signed Supabase URLs)
+ * and prevents @react-pdf/renderer from trying to fetch URLs itself,
+ * which crashes with "Offset is outside the bounds of the DataView".
+ */
+async function toDataUri(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) return null;
+    const buf = await res.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let binary = "";
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const b64 = btoa(binary);
+    const mime = res.headers.get("content-type") ?? "image/jpeg";
+    return `data:${mime};base64,${b64}`;
+  } catch {
+    return null;
+  }
+}
+
+/** Convert all photo URLs in the report data to base64 data URIs. */
+async function prefetchPhotos(data: ReportData): Promise<ReportData> {
+  const items = await Promise.all(
+    data.items.map(async (item) => {
+      const [beforePhotoUrl, afterPhotoUrl] = await Promise.all([
+        item.beforePhotoUrl ? toDataUri(item.beforePhotoUrl) : null,
+        item.afterPhotoUrl  ? toDataUri(item.afterPhotoUrl)  : null,
+      ]);
+      return { ...item, beforePhotoUrl, afterPhotoUrl };
+    })
+  );
+  return { ...data, items };
+}
+
 export function ReportButton({ projectId }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -13,16 +52,17 @@ export function ReportButton({ projectId }: Props) {
     setLoading(true);
     setError(null);
     try {
-      // Fetch report data from the API route.
       const res = await fetch(`/api/report/${projectId}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.error ?? "Failed to load report data.");
       }
-      const data: ReportData = await res.json();
+      const rawData: ReportData = await res.json();
 
-      // Dynamically import pdf() and the document — keeps @react-pdf/renderer
-      // out of the initial JS bundle (it's large and SSR-incompatible).
+      // Pre-fetch all images as base64 — this avoids CORS/auth failures
+      // that occur when @react-pdf/renderer tries to fetch the URLs itself.
+      const data = await prefetchPhotos(rawData);
+
       const [{ pdf }, { PunchListReport }] = await Promise.all([
         import("@react-pdf/renderer"),
         import("./PunchListReport"),
@@ -31,7 +71,6 @@ export function ReportButton({ projectId }: Props) {
       const blob = await pdf(<PunchListReport data={data} />).toBlob();
       const url  = URL.createObjectURL(blob);
 
-      // Trigger download.
       const a = document.createElement("a");
       a.href = url;
       a.download = `${data.project.name.replace(/[^a-z0-9]/gi, "_")}_punch_list.pdf`;
