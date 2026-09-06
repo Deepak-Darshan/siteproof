@@ -1,9 +1,18 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import type { PunchItem, Blueprint, Photo } from "@/types/database";
+import type { PunchItem, Blueprint, Photo, ActivityAction } from "@/types/database";
 import { ResolveSection } from "./ResolveSection";
 import { BeforePhotoSection } from "./BeforePhotoSection";
+
+type ActivityEntry = {
+  id: string;
+  action: ActivityAction;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  // Supabase returns the joined row as a single object (many-to-one FK).
+  profiles: { full_name: string } | { full_name: string }[] | null;
+};
 
 type Props = {
   params: Promise<{ id: string; itemId: string }>;
@@ -77,6 +86,15 @@ export default async function PunchItemDetailPage({ params }: Props) {
         .single()
     : { data: null };
   const isAdmin = membership?.role === "admin";
+
+  // Fetch activity log with uploader name.
+  const { data: activityData } = await supabase
+    .from("activity_log")
+    .select("id, action, metadata, created_at, profiles(full_name)")
+    .eq("item_id", itemId)
+    .order("created_at", { ascending: false });
+
+  const activity = (activityData as unknown as ActivityEntry[]) ?? [];
 
   const [beforeUrl, afterUrl, blueprintUrl] = await Promise.all([
     beforePhoto ? signedUrl(beforePhoto.file_path) : null,
@@ -200,15 +218,82 @@ export default async function PunchItemDetailPage({ params }: Props) {
         />
       </section>
 
-      {/* Timestamps */}
-      <section className="text-xs text-zinc-400 space-y-0.5 pt-2 border-t border-zinc-100">
-        <p>Created {new Date(item.created_at).toLocaleString()}</p>
-        {item.resolved_at && (
-          <p>Resolved {new Date(item.resolved_at).toLocaleString()}</p>
+      {/* Activity log */}
+      <section>
+        <p className="text-sm font-semibold text-zinc-500 uppercase tracking-wide mb-3">Activity</p>
+        {activity.length === 0 ? (
+          <p className="text-sm text-zinc-400">No activity recorded yet.</p>
+        ) : (
+          <ol className="space-y-0">
+            {activity.map((entry, i) => {
+              const { label, dot } = activityMeta(entry);
+              const profileObj = Array.isArray(entry.profiles) ? entry.profiles[0] : entry.profiles;
+              const name = profileObj?.full_name ?? "Unknown";
+              const isLast = i === activity.length - 1;
+              return (
+                <li key={entry.id} className="flex gap-3">
+                  {/* Timeline spine */}
+                  <div className="flex flex-col items-center shrink-0">
+                    <div className={`w-2.5 h-2.5 rounded-full mt-1 shrink-0 ${dot}`} />
+                    {!isLast && <div className="w-px flex-1 bg-zinc-200 my-1" />}
+                  </div>
+                  {/* Content */}
+                  <div className={`pb-4 min-w-0 ${isLast ? "" : ""}`}>
+                    <p className="text-sm text-zinc-700">
+                      <span className="font-medium">{name}</span>{" "}
+                      {label}
+                    </p>
+                    <p className="text-xs text-zinc-400 mt-0.5">
+                      {relativeTime(entry.created_at)}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
         )}
       </section>
     </main>
   );
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function relativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60)   return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60)   return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24)   return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 7)    return `${d}d ago`;
+  return new Date(dateStr).toLocaleDateString();
+}
+
+function activityMeta(entry: ActivityEntry): { label: string; dot: string } {
+  const meta = entry.metadata ?? {};
+  switch (entry.action) {
+    case "item_created":
+      return { label: "created this item", dot: "bg-zinc-400" };
+    case "photo_added":
+      return {
+        label: meta.type === "after" ? "uploaded the after photo" : "uploaded the before photo",
+        dot: "bg-blue-400",
+      };
+    case "item_resolved":
+      return { label: "marked this item resolved", dot: "bg-green-500" };
+    case "item_reopened":
+      return { label: "reopened this item", dot: "bg-amber-400" };
+    case "status_changed":
+      return {
+        label: meta.new_status === "in_review" ? "submitted for review" : `changed status to ${meta.new_status}`,
+        dot: "bg-amber-400",
+      };
+    default:
+      return { label: entry.action, dot: "bg-zinc-300" };
+  }
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
