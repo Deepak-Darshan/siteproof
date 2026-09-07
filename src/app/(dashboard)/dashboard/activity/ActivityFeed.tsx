@@ -4,41 +4,26 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { fetchActivity, type ActivityEntry } from "@/app/actions/activity";
 
-// ── Action metadata ─────────────────────────────────────────────────────────────
+// ── Helpers ─────────────────────────────────────────────────────────────────────
 
-function actionMeta(entry: ActivityEntry): { dot: string; verb: string } {
-  const meta = entry.metadata ?? {};
-  switch (entry.action) {
-    case "item_created":
-      return { dot: "bg-zinc-400", verb: "created" };
-    case "photo_added":
-      return {
-        dot: "bg-blue-400",
-        verb:
-          meta.type === "after"
-            ? "uploaded the after photo for"
-            : "uploaded the before photo for",
-      };
-    case "item_resolved":
-      return { dot: "bg-green-500", verb: "resolved" };
-    case "item_reopened":
-      return { dot: "bg-amber-400", verb: "reopened" };
-    case "status_changed":
-      return {
-        dot: "bg-amber-400",
-        verb:
-          meta.new_status === "in_review"
-            ? "submitted for review"
-            : `changed status of`,
-      };
-    default:
-      return { dot: "bg-zinc-300", verb: entry.action };
-  }
+/** Returns "Today", "Yesterday", or a formatted date like "5 September 2026". */
+function dayLabel(dateStr: string): string {
+  const d = new Date(dateStr);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+
+  if (d.toDateString() === today.toDateString()) return "Today";
+  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return d.toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
 }
 
-// ── Relative time ───────────────────────────────────────────────────────────────
+/** ISO date string (YYYY-MM-DD) used as a grouping key. */
+function dayKey(dateStr: string): string {
+  return new Date(dateStr).toISOString().slice(0, 10);
+}
 
-function relativeTime(dateStr: string): string {
+function timeLabel(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const s = Math.floor(diff / 1000);
   if (s < 60) return "just now";
@@ -46,49 +31,157 @@ function relativeTime(dateStr: string): string {
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 7) return `${d}d ago`;
-  return new Date(dateStr).toLocaleDateString();
+  // For older entries show the clock time since the day header handles the date.
+  return new Date(dateStr).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
+}
+
+// ── Action description ──────────────────────────────────────────────────────────
+
+type ActionInfo = {
+  dot: string;         // Tailwind bg class for the dot
+  sentence: (name: string, itemEl: React.ReactNode) => React.ReactNode;
+};
+
+function actionInfo(entry: ActivityEntry): ActionInfo {
+  const meta = entry.metadata ?? {};
+
+  switch (entry.action) {
+    case "item_created":
+      return {
+        dot: "bg-zinc-400",
+        sentence: (name, itemEl) => (
+          <><span className="font-semibold text-zinc-900">{name}</span> created {itemEl}</>
+        ),
+      };
+    case "photo_added":
+      return {
+        dot: "bg-blue-400",
+        sentence: (name, itemEl) =>
+          meta.type === "after" ? (
+            <><span className="font-semibold text-zinc-900">{name}</span> uploaded the after photo for {itemEl}</>
+          ) : (
+            <><span className="font-semibold text-zinc-900">{name}</span> uploaded a before photo for {itemEl}</>
+          ),
+      };
+    case "item_resolved":
+      return {
+        dot: "bg-green-500",
+        sentence: (name, itemEl) => (
+          <><span className="font-semibold text-zinc-900">{name}</span> marked {itemEl} as resolved</>
+        ),
+      };
+    case "item_reopened":
+      return {
+        dot: "bg-amber-400",
+        sentence: (name, itemEl) => (
+          <><span className="font-semibold text-zinc-900">{name}</span> reopened {itemEl}</>
+        ),
+      };
+    case "status_changed":
+      return {
+        dot: "bg-amber-400",
+        sentence: (name, itemEl) =>
+          meta.new_status === "in_review" ? (
+            <><span className="font-semibold text-zinc-900">{name}</span> submitted {itemEl} for review</>
+          ) : (
+            <><span className="font-semibold text-zinc-900">{name}</span> changed the status of {itemEl}</>
+          ),
+      };
+    default:
+      return {
+        dot: "bg-zinc-300",
+        sentence: (name, itemEl) => (
+          <><span className="font-semibold text-zinc-900">{name}</span> updated {itemEl}</>
+        ),
+      };
+  }
 }
 
 // ── Entry row ───────────────────────────────────────────────────────────────────
 
 function EntryRow({ entry, isLast }: { entry: ActivityEntry; isLast: boolean }) {
-  const { dot, verb } = actionMeta(entry);
+  const { dot, sentence } = actionInfo(entry);
   const name = entry.profiles?.full_name ?? "Someone";
   const item = entry.punch_items;
 
+  const itemEl = item ? (
+    <Link
+      href={`/dashboard/projects/${entry.project_id}/items/${item.id}`}
+      className="font-semibold text-zinc-900 underline underline-offset-2 decoration-zinc-300 hover:decoration-zinc-600 transition-colors"
+    >
+      {item.title}
+    </Link>
+  ) : (
+    <span className="italic text-zinc-400">a deleted item</span>
+  );
+
   return (
-    <li className="flex gap-3">
-      {/* Timeline spine */}
-      <div className="flex flex-col items-center shrink-0">
-        <div className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${dot}`} />
-        {!isLast && <div className="w-px flex-1 bg-zinc-200 my-1" />}
+    <li className="flex gap-3 px-4 py-3">
+      {/* Dot + spine */}
+      <div className="flex flex-col items-center shrink-0 pt-0.5">
+        <div className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
+        {!isLast && <div className="w-px flex-1 bg-zinc-100 mt-2" />}
       </div>
 
-      {/* Content */}
-      <div className="pb-4 min-w-0 flex-1">
-        <p className="text-sm text-zinc-700 leading-snug">
-          <span className="font-medium text-zinc-900">{name}</span>{" "}
-          {verb}{" "}
-          {item ? (
-            <Link
-              href={`/dashboard/projects/${entry.project_id}/items/${item.id}`}
-              className="font-medium text-zinc-900 underline underline-offset-2 hover:text-zinc-600 transition-colors"
-            >
-              {item.title}
-            </Link>
-          ) : (
-            <span className="text-zinc-500 italic">a deleted item</span>
-          )}
+      {/* Text */}
+      <div className="flex-1 min-w-0 flex items-start justify-between gap-4">
+        <p className="text-sm text-zinc-600 leading-snug">
+          {sentence(name, itemEl)}
         </p>
-        <p className="text-xs text-zinc-400 mt-0.5">{relativeTime(entry.created_at)}</p>
+        <span className="text-xs text-zinc-400 shrink-0 mt-0.5 tabular-nums">
+          {timeLabel(entry.created_at)}
+        </span>
       </div>
     </li>
   );
 }
 
-// ── Feed component ──────────────────────────────────────────────────────────────
+// ── Day group ───────────────────────────────────────────────────────────────────
+
+function DayGroup({ label, entries }: { label: string; entries: ActivityEntry[] }) {
+  return (
+    <section className="mb-4">
+      {/* Date header */}
+      <div className="flex items-center gap-3 mb-1 px-1">
+        <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+          {label}
+        </span>
+        <div className="flex-1 h-px bg-zinc-200" />
+      </div>
+
+      {/* Card */}
+      <div className="bg-white rounded-xl border border-zinc-200 overflow-hidden">
+        <ol>
+          {entries.map((entry, i) => (
+            <EntryRow
+              key={entry.id}
+              entry={entry}
+              isLast={i === entries.length - 1}
+            />
+          ))}
+        </ol>
+      </div>
+    </section>
+  );
+}
+
+// ── Grouping logic ──────────────────────────────────────────────────────────────
+
+type Group = { key: string; label: string; entries: ActivityEntry[] };
+
+function groupByDay(entries: ActivityEntry[]): Group[] {
+  const map = new Map<string, Group>();
+  for (const entry of entries) {
+    const key = dayKey(entry.created_at);
+    if (!map.has(key)) {
+      map.set(key, { key, label: dayLabel(entry.created_at), entries: [] });
+    }
+    map.get(key)!.entries.push(entry);
+  }
+  return Array.from(map.values());
+}
+
+// ── Feed ────────────────────────────────────────────────────────────────────────
 
 type Props = {
   initialEntries: ActivityEntry[];
@@ -128,20 +221,16 @@ export function ActivityFeed({ initialEntries, initialHasMore }: Props) {
     );
   }
 
+  const groups = groupByDay(entries);
+
   return (
     <div>
-      <ol className="space-y-0">
-        {entries.map((entry, i) => (
-          <EntryRow
-            key={entry.id}
-            entry={entry}
-            isLast={i === entries.length - 1 && !hasMore}
-          />
-        ))}
-      </ol>
+      {groups.map((group) => (
+        <DayGroup key={group.key} label={group.label} entries={group.entries} />
+      ))}
 
       {error && (
-        <p className="text-sm text-red-600 mt-4 text-center">{error}</p>
+        <p className="text-sm text-red-600 mt-2 text-center">{error}</p>
       )}
 
       {hasMore && (
