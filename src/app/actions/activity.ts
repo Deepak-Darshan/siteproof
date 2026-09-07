@@ -1,9 +1,9 @@
+"use server";
+
 import { createClient } from "@/lib/supabase/server";
-import { ActivityFeed } from "./ActivityFeed";
 import type { ActivityAction } from "@/types/database";
 
-// Reuse the same shape as the server action so types stay consistent.
-type ActivityEntry = {
+export type ActivityEntry = {
   id: string;
   action: ActivityAction;
   metadata: Record<string, unknown> | null;
@@ -14,33 +14,28 @@ type ActivityEntry = {
   punch_items: { id: string; title: string } | null;
 };
 
+export type FetchActivityResult =
+  | { entries: ActivityEntry[]; hasMore: boolean }
+  | { error: string };
+
 const PAGE_SIZE = 20;
 
-export default async function ActivityPage() {
+export async function fetchActivity(offset = 0): Promise<FetchActivityResult> {
   const supabase = await createClient();
 
-  // RLS on activity_log already filters to projects the user belongs to.
   const { data, error } = await supabase
     .from("activity_log")
     .select(
       "id, action, metadata, created_at, project_id, item_id, profiles(full_name), punch_items(id, title)"
     )
     .order("created_at", { ascending: false })
-    .range(0, PAGE_SIZE); // fetch one extra to detect next page
+    .range(offset, offset + PAGE_SIZE);
+  // Fetch one extra to know if there's a next page.
+
+  if (error) return { error: error.message };
 
   const rows = (data ?? []) as unknown as ActivityEntry[];
   const hasMore = rows.length > PAGE_SIZE;
-  const initialEntries = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
 
-  return (
-    <main className="max-w-2xl mx-auto px-4 pt-6 pb-24">
-      <h1 className="text-xl font-bold text-zinc-900 mb-6">Activity</h1>
-
-      {error ? (
-        <p className="text-sm text-red-600">Failed to load activity: {error.message}</p>
-      ) : (
-        <ActivityFeed initialEntries={initialEntries} initialHasMore={hasMore} />
-      )}
-    </main>
-  );
+  return { entries: hasMore ? rows.slice(0, PAGE_SIZE) : rows, hasMore };
 }
