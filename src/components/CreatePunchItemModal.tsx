@@ -149,6 +149,20 @@ export function CreatePunchItemModal({
             </select>
           </div>
 
+          {/* Due date */}
+          <div>
+            <label htmlFor="item-due-date" className="block text-sm font-medium text-zinc-700 mb-1.5">
+              Due date <span className="text-zinc-400 font-normal">(optional)</span>
+            </label>
+            <input
+              id="item-due-date"
+              name="due_date"
+              type="date"
+              min={new Date().toISOString().slice(0, 10)}
+              className="w-full h-11 rounded-lg border border-zinc-300 px-3 text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent text-base"
+            />
+          </div>
+
           {/* Description */}
           <div>
             <label htmlFor="item-desc" className="block text-sm font-medium text-zinc-700 mb-1.5">

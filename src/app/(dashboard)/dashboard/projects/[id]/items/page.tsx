@@ -55,14 +55,30 @@ const STATUS_LABELS: Record<PunchItemStatus, string> = {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function isOverdue(item: PunchItem): boolean {
+  return !!item.due_date && item.due_date < today() && item.status !== "resolved";
+}
+
+function formatDueDate(dateStr: string): string {
+  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-AU", {
+    day: "numeric",
+    month: "short",
+  });
+}
+
 function buildHref(
   projectId: string,
-  params: { status?: string; severity?: string; trade?: string }
+  params: { status?: string; severity?: string; trade?: string; overdue?: boolean }
 ) {
   const sp = new URLSearchParams();
   if (params.status)   sp.set("status",   params.status);
   if (params.severity) sp.set("severity", params.severity);
   if (params.trade)    sp.set("trade",    params.trade);
+  if (params.overdue)  sp.set("overdue",  "1");
   const qs = sp.toString();
   return `/dashboard/projects/${projectId}/items${qs ? `?${qs}` : ""}`;
 }
@@ -76,10 +92,10 @@ export default async function PunchListPage({ params, searchParams }: Props) {
   const filterStatus   = typeof sp.status   === "string" ? sp.status   as PunchItemStatus   : undefined;
   const filterSeverity = typeof sp.severity === "string" ? sp.severity as PunchItemSeverity : undefined;
   const filterTrade    = typeof sp.trade    === "string" ? sp.trade    as PunchItemTrade    : undefined;
+  const filterOverdue  = sp.overdue === "1";
 
   const supabase = await createClient();
 
-  // Verify project access (RLS handles it; just check it exists).
   const { data: project, error: projectError } = await supabase
     .from("projects")
     .select("id, name")
@@ -89,7 +105,6 @@ export default async function PunchListPage({ params, searchParams }: Props) {
   if (projectError || !project) notFound();
   const p = project as Pick<Project, "id" | "name">;
 
-  // Build filtered query.
   let query = supabase
     .from("punch_items")
     .select("*")
@@ -99,9 +114,14 @@ export default async function PunchListPage({ params, searchParams }: Props) {
   if (filterStatus)   query = query.eq("status",   filterStatus);
   if (filterSeverity) query = query.eq("severity", filterSeverity);
   if (filterTrade)    query = query.eq("trade",    filterTrade);
+  if (filterOverdue) {
+    query = query.lt("due_date", today()).neq("status", "resolved");
+  }
 
   const { data: itemsData } = await query;
   const items = (itemsData as PunchItem[]) ?? [];
+
+  const hasFilter = filterStatus || filterSeverity || filterTrade || filterOverdue;
 
   return (
     <main className="max-w-2xl mx-auto px-4 pt-6 pb-24 space-y-5">
@@ -124,11 +144,11 @@ export default async function PunchListPage({ params, searchParams }: Props) {
 
       {/* Filter chips */}
       <div className="space-y-2">
-        {/* Status row */}
+        {/* Status + overdue row */}
         <div className="flex gap-1.5 flex-wrap">
           <FilterChip
             label="All statuses"
-            active={!filterStatus}
+            active={!filterStatus && !filterOverdue}
             href={buildHref(projectId, { severity: filterSeverity, trade: filterTrade })}
           />
           {STATUS_OPTIONS.map((opt) => (
@@ -136,9 +156,23 @@ export default async function PunchListPage({ params, searchParams }: Props) {
               key={opt.value}
               label={opt.label}
               active={filterStatus === opt.value}
-              href={buildHref(projectId, { status: filterStatus === opt.value ? undefined : opt.value, severity: filterSeverity, trade: filterTrade })}
+              href={buildHref(projectId, {
+                status: filterStatus === opt.value ? undefined : opt.value,
+                severity: filterSeverity,
+                trade: filterTrade,
+              })}
             />
           ))}
+          <FilterChip
+            label="Overdue"
+            active={filterOverdue}
+            href={buildHref(projectId, {
+              severity: filterSeverity,
+              trade: filterTrade,
+              overdue: !filterOverdue,
+            })}
+            danger
+          />
         </div>
 
         {/* Severity row */}
@@ -146,14 +180,19 @@ export default async function PunchListPage({ params, searchParams }: Props) {
           <FilterChip
             label="All severities"
             active={!filterSeverity}
-            href={buildHref(projectId, { status: filterStatus, trade: filterTrade })}
+            href={buildHref(projectId, { status: filterStatus, trade: filterTrade, overdue: filterOverdue })}
           />
           {SEVERITY_OPTIONS.map((opt) => (
             <FilterChip
               key={opt.value}
               label={opt.label}
               active={filterSeverity === opt.value}
-              href={buildHref(projectId, { status: filterStatus, severity: filterSeverity === opt.value ? undefined : opt.value, trade: filterTrade })}
+              href={buildHref(projectId, {
+                status: filterStatus,
+                severity: filterSeverity === opt.value ? undefined : opt.value,
+                trade: filterTrade,
+                overdue: filterOverdue,
+              })}
             />
           ))}
         </div>
@@ -163,14 +202,19 @@ export default async function PunchListPage({ params, searchParams }: Props) {
           <FilterChip
             label="All trades"
             active={!filterTrade}
-            href={buildHref(projectId, { status: filterStatus, severity: filterSeverity })}
+            href={buildHref(projectId, { status: filterStatus, severity: filterSeverity, overdue: filterOverdue })}
           />
           {TRADE_OPTIONS.map((opt) => (
             <FilterChip
               key={opt.value}
               label={opt.label}
               active={filterTrade === opt.value}
-              href={buildHref(projectId, { status: filterStatus, severity: filterSeverity, trade: filterTrade === opt.value ? undefined : opt.value })}
+              href={buildHref(projectId, {
+                status: filterStatus,
+                severity: filterSeverity,
+                trade: filterTrade === opt.value ? undefined : opt.value,
+                overdue: filterOverdue,
+              })}
             />
           ))}
         </div>
@@ -179,7 +223,7 @@ export default async function PunchListPage({ params, searchParams }: Props) {
       {/* Count */}
       <p className="text-xs text-zinc-400">
         {items.length} {items.length === 1 ? "item" : "items"}
-        {(filterStatus || filterSeverity || filterTrade) && " matching filters"}
+        {hasFilter && " matching filters"}
       </p>
 
       {/* List */}
@@ -193,73 +237,113 @@ export default async function PunchListPage({ params, searchParams }: Props) {
           </div>
           <p className="text-zinc-900 font-medium text-sm">No items found</p>
           <p className="text-zinc-500 text-xs">
-            {filterStatus || filterSeverity || filterTrade
-              ? "Try clearing some filters."
-              : "Tap the blueprint to add the first punch item."}
+            {hasFilter ? "Try clearing some filters." : "Tap the blueprint to add the first punch item."}
           </p>
         </div>
       ) : (
         <ul className="space-y-2">
-          {items.map((item) => (
-            <li key={item.id}>
-              <Link
-                href={`/dashboard/projects/${projectId}/items/${item.id}`}
-                className="flex items-start gap-3 bg-white rounded-xl border border-zinc-200 px-4 py-3.5 hover:border-zinc-300 hover:shadow-sm transition-all active:bg-zinc-50"
-              >
-                {/* Severity dot */}
-                <div
-                  className="mt-1 w-2.5 h-2.5 rounded-full shrink-0"
-                  style={{
-                    backgroundColor:
-                      item.severity === "critical" ? "#ef4444" :
-                      item.severity === "major"    ? "#f97316" : "#3b82f6",
-                  }}
-                  aria-hidden="true"
-                />
+          {items.map((item) => {
+            const overdue = isOverdue(item);
+            return (
+              <li key={item.id}>
+                <Link
+                  href={`/dashboard/projects/${projectId}/items/${item.id}`}
+                  className={`flex items-start gap-3 bg-white rounded-xl border px-4 py-3.5 hover:shadow-sm transition-all active:bg-zinc-50 ${
+                    overdue ? "border-red-200 hover:border-red-300" : "border-zinc-200 hover:border-zinc-300"
+                  }`}
+                >
+                  {/* Severity dot */}
+                  <div
+                    className="mt-1 w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{
+                      backgroundColor:
+                        item.severity === "critical" ? "#ef4444" :
+                        item.severity === "major"    ? "#f97316" : "#3b82f6",
+                    }}
+                    aria-hidden="true"
+                  />
 
-                <div className="min-w-0 flex-1 space-y-1.5">
-                  <p className="font-medium text-zinc-900 text-sm leading-snug">{item.title}</p>
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <p className="font-medium text-zinc-900 text-sm leading-snug">{item.title}</p>
 
-                  <div className="flex flex-wrap gap-1.5">
-                    {/* Severity badge */}
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${SEVERITY_STYLES[item.severity].bg} ${SEVERITY_STYLES[item.severity].text}`}>
-                      {SEVERITY_OPTIONS.find((o) => o.value === item.severity)?.label ?? item.severity}
-                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${SEVERITY_STYLES[item.severity].bg} ${SEVERITY_STYLES[item.severity].text}`}>
+                        {SEVERITY_OPTIONS.find((o) => o.value === item.severity)?.label ?? item.severity}
+                      </span>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_STYLES[item.status].bg} ${STATUS_STYLES[item.status].text}`}>
+                        {STATUS_LABELS[item.status]}
+                      </span>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-zinc-100 text-zinc-600">
+                        {TRADE_OPTIONS.find((o) => o.value === item.trade)?.label ?? item.trade}
+                      </span>
+                      {overdue && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
+                          Overdue
+                        </span>
+                      )}
+                    </div>
 
-                    {/* Status badge */}
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_STYLES[item.status].bg} ${STATUS_STYLES[item.status].text}`}>
-                      {STATUS_LABELS[item.status]}
-                    </span>
-
-                    {/* Trade badge */}
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-zinc-100 text-zinc-600">
-                      {TRADE_OPTIONS.find((o) => o.value === item.trade)?.label ?? item.trade}
-                    </span>
+                    {/* Due date */}
+                    {item.due_date && (
+                      <p className={`text-xs ${overdue ? "text-red-600 font-medium" : "text-zinc-400"}`}>
+                        Due {formatDueDate(item.due_date)}
+                      </p>
+                    )}
                   </div>
-                </div>
 
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-300 shrink-0 mt-1" aria-hidden="true">
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
-              </Link>
-            </li>
-          ))}
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-300 shrink-0 mt-1" aria-hidden="true">
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       )}
     </main>
   );
 }
 
-// ── FilterChip ────────────────────────────────────────────────────────────────
+// ── FilterChip ─────────────────────────────────────────────────────────────────
 
-function FilterChip({ label, active, href }: { label: string; active: boolean; href: string }) {
+function FilterChip({
+  label,
+  active,
+  href,
+  danger = false,
+}: {
+  label: string;
+  active: boolean;
+  href: string;
+  danger?: boolean;
+}) {
+  if (active && danger) {
+    return (
+      <Link
+        href={href}
+        className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap bg-red-600 text-white"
+      >
+        {label}
+      </Link>
+    );
+  }
+  if (active) {
+    return (
+      <Link
+        href={href}
+        className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap bg-zinc-900 text-white"
+      >
+        {label}
+      </Link>
+    );
+  }
   return (
     <Link
       href={href}
-      className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${
-        active
-          ? "bg-zinc-900 text-white"
-          : "bg-white text-zinc-600 border border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50"
+      className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap border ${
+        danger
+          ? "bg-white text-red-600 border-red-200 hover:bg-red-50"
+          : "bg-white text-zinc-600 border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50"
       }`}
     >
       {label}

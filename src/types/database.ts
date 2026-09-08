@@ -59,6 +59,7 @@ export type PunchItem = {
   created_by: string;
   created_at: string;
   resolved_at: string | null;
+  due_date: string | null;
 };
 
 export type PhotoType = "before" | "after";

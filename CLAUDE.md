@@ -51,11 +51,9 @@ RLS is enabled on all tables — never bypass it from client code.
 - Minimum touch target: 44px for all interactive elements
 - Image compression before upload: canvas resize to max 1920px wide
 
-## Current Sprint: Week 4
-- PDF punch list report (client-side with @react-pdf/renderer)
-- Team invites (project_invites table, invite modal, /invite/[token] accept flow)
-- No email sending — invite link copy only
-- All new SQL migrations should be printed, not run via CLI
+## Current Sprint: Week 5
+- Dashboard with project analytics (stat cards + resolution chart)
+- Due dates + overdue tracking on punch items
 
 ## Commands
 

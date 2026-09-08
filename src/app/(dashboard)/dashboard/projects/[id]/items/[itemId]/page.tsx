@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { PunchItem, Blueprint, Photo, ActivityAction } from "@/types/database";
 import { ResolveSection } from "./ResolveSection";
 import { BeforePhotoSection } from "./BeforePhotoSection";
+import { DueDateSection } from "./DueDateSection";
 
 type ActivityEntry = {
   id: string;
@@ -147,6 +148,17 @@ export default async function PunchItemDetailPage({ params }: Props) {
           {TRADE_LABELS[item.trade] ?? item.trade}
         </span>
       </div>
+
+      {/* Due date */}
+      <section>
+        <p className="text-sm font-semibold text-zinc-500 uppercase tracking-wide mb-2">Due date</p>
+        <DueDateSection
+          itemId={itemId}
+          projectId={projectId}
+          dueDate={item.due_date ?? null}
+          isResolved={item.status === "resolved"}
+        />
+      </section>
 
       {/* Description */}
       {item.description && (

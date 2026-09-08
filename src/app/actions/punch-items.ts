@@ -22,6 +22,7 @@ const CreatePunchItemSchema = z.object({
   blueprint_id: z.string().uuid(),
   pin_x: z.string().transform((v) => parseFloat(v)),
   pin_y: z.string().transform((v) => parseFloat(v)),
+  due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
 });
 
 export type CreatePunchItemState =
@@ -41,6 +42,8 @@ export async function createPunchItem(
   _state: CreatePunchItemState,
   formData: FormData
 ): Promise<CreatePunchItemState> {
+  const dueDateRaw = formData.get("due_date");
+
   const validated = CreatePunchItemSchema.safeParse({
     title: formData.get("title"),
     description: formData.get("description") || undefined,
@@ -50,6 +53,7 @@ export async function createPunchItem(
     blueprint_id: formData.get("blueprint_id"),
     pin_x: formData.get("pin_x"),
     pin_y: formData.get("pin_y"),
+    due_date: typeof dueDateRaw === "string" && dueDateRaw ? dueDateRaw : null,
   });
 
   if (!validated.success) {
@@ -57,10 +61,7 @@ export async function createPunchItem(
   }
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { message: "Not authenticated." };
 
   const { data, error } = await supabase
@@ -74,6 +75,7 @@ export async function createPunchItem(
       blueprint_id: validated.data.blueprint_id,
       pin_x: validated.data.pin_x,
       pin_y: validated.data.pin_y,
+      due_date: validated.data.due_date ?? null,
       created_by: user.id,
       status: "open",
     })
@@ -93,4 +95,32 @@ export async function createPunchItem(
   });
 
   return { success: true, item };
+}
+
+// ── Update due date ────────────────────────────────────────────────────────────
+
+export type UpdateDueDateResult = { success: true } | { error: string };
+
+export async function updateDueDate(
+  itemId: string,
+  projectId: string,
+  dueDate: string | null,
+): Promise<UpdateDueDateResult> {
+  if (!itemId || !projectId) return { error: "Missing required fields." };
+  if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+    return { error: "Invalid date format." };
+  }
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated." };
+
+  const { error } = await supabase
+    .from("punch_items")
+    .update({ due_date: dueDate ?? null })
+    .eq("id", itemId)
+    .eq("project_id", projectId);
+
+  if (error) return { error: error.message };
+  return { success: true };
 }

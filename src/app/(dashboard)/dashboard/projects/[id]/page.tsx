@@ -26,7 +26,7 @@ export default async function ProjectPage({ params }: Props) {
 
   if (error || !project) notFound();
 
-  const [{ data: blueprints }, { data: { user } }, { data: membersData }] =
+  const [{ data: blueprints }, { data: { user } }, { data: membersData }, { data: itemsData }] =
     await Promise.all([
       supabase
         .from("blueprints")
@@ -39,11 +39,27 @@ export default async function ProjectPage({ params }: Props) {
         .select("project_id, user_id, role, invited_at, profiles(full_name, company)")
         .eq("project_id", id)
         .order("invited_at", { ascending: true }),
+      supabase
+        .from("punch_items")
+        .select("status, due_date")
+        .eq("project_id", id),
     ]);
 
   const p = project as Project;
   const sheets = (blueprints as Blueprint[]) ?? [];
   const members = (membersData as unknown as MemberWithProfile[]) ?? [];
+
+  // ── Item stats ────────────────────────────────────────────────────────────
+  type ItemRow = { status: string; due_date: string | null };
+  const allItems = (itemsData as ItemRow[]) ?? [];
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const stats = {
+    open:     allItems.filter((i) => i.status === "open").length,
+    inReview: allItems.filter((i) => i.status === "in_review").length,
+    resolved: allItems.filter((i) => i.status === "resolved").length,
+    overdue:  allItems.filter((i) => i.due_date && i.due_date < todayStr && i.status !== "resolved").length,
+    total:    allItems.length,
+  };
 
   const currentMember = user
     ? members.find((m) => m.user_id === user.id)
@@ -72,6 +88,23 @@ export default async function ProjectPage({ params }: Props) {
         {/* Report download */}
         <ReportButton projectId={id} />
       </div>
+
+      {/* Item stats */}
+      {stats.total > 0 && (
+        <div className="grid grid-cols-4 gap-2">
+          {[
+            { label: "Open",      value: stats.open,     color: "text-zinc-900" },
+            { label: "In Review", value: stats.inReview, color: "text-amber-600" },
+            { label: "Resolved",  value: stats.resolved, color: "text-green-600" },
+            { label: "Overdue",   value: stats.overdue,  color: stats.overdue > 0 ? "text-red-600" : "text-zinc-400" },
+          ].map(({ label, value, color }) => (
+            <div key={label} className="bg-white rounded-xl border border-zinc-200 px-3 py-3 text-center">
+              <p className={`text-xl font-bold tabular-nums ${color}`}>{value}</p>
+              <p className="text-xs text-zinc-400 mt-0.5">{label}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Punch list link */}
       <Link
